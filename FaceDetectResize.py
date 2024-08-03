@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import cv2
-from mtcnn import MTCNN
+# from mtcnn import MTCNN
 
 class FaceDetectResize:
     @classmethod
@@ -16,7 +16,7 @@ class FaceDetectResize:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "process_image"
-    CATEGORY = "image/processing"
+    CATEGORY = "BrevDetect"
 
     def process_image(self, image, min_face_size, max_face_size):
         # Convert from ComfyUI image format to numpy array
