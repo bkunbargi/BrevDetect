@@ -16,7 +16,7 @@ class FaceDetectResize:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "process_image"
-    CATEGORY = "image/processing"
+    CATEGORY = "BrevDetect"
 
     def process_image(self, image, min_face_size, max_face_size):
         # Convert from ComfyUI image format to numpy array
