@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import cv2
-from mtcnn import MTCNN
+# from mtcnn import MTCNN
 
 class FaceDetectResize:
     @classmethod
