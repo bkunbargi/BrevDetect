@@ -19,7 +19,6 @@ class FaceDetectResizeNode:
 
     def detect_faces(self, image_rgb):
         """Detect faces in the RGB image using MTCNN and keep only the largest face."""
-        print("Detecting faces...")
         print(f"Input image shape: {image_rgb.shape}, dtype: {image_rgb.dtype}")
         detector = MTCNN()
         results = detector.detect_faces(image_rgb)
@@ -31,14 +30,17 @@ class FaceDetectResizeNode:
         return [largest_face]
 
     def process_image(self, image):
-        print("Processing image...")
+        print("Input image shape: ", image.shape)
         try:
-            # Convert ComfyUI image to numpy array
             if isinstance(image, torch.Tensor):
-                image_np = image.squeeze().permute(1, 2, 0).cpu().numpy()
+                image_np = image.squeeze(0).permute(0,1,2).cpu().numpy()
             else:
                 image_np = np.array(image)
-            
+
+            print("Image Shape: ", image_np.shape)
+            if image_np.shape[2] != 3:
+                image_np = np.transpose(image_np, (1,2,0))
+
             image_rgb = (image_np * 255).clip(0, 255).astype(np.uint8)
             print(f"Converted image shape: {image_rgb.shape}, dtype: {image_rgb.dtype}")
 
@@ -67,7 +69,7 @@ class FaceDetectResizeNode:
 
             # Convert back to ComfyUI image format
             output_image = np.array(scaled_image).astype(np.float32) / 255.0
-            output_image = torch.from_numpy(output_image).unsqueeze(0).permute(0, 3, 1, 2)
+            output_image = torch.from_numpy(output_image).unsqueeze(0)
             print(f"Output image shape: {output_image.shape}, type: {output_image.dtype}")
 
             return (output_image,)
