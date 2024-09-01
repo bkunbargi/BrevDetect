@@ -96,13 +96,28 @@ class BrevResize:
 
     def resize_image(self, image, width, height):
         try:
-            # Convert from ComfyUI image format to PIL Image
+            # Convert from ComfyUI image format to numpy array
             if isinstance(image, torch.Tensor):
-                image_np = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
+                image_np = image.squeeze().cpu().numpy()
             else:
                 image_np = np.array(image)
 
+            # Ensure the image is in the correct shape (H, W, C)
+            if image_np.ndim == 2:
+                image_np = image_np[:, :, np.newaxis]
+            elif image_np.ndim == 3 and image_np.shape[0] == 1:
+                image_np = image_np.squeeze(0)
+            elif image_np.ndim == 3 and image_np.shape[0] == 3:
+                image_np = np.transpose(image_np, (1, 2, 0))
+
+            # Convert to RGB if it's a single-channel image
+            if image_np.shape[2] == 1:
+                image_np = np.repeat(image_np, 3, axis=2)
+
+            # Normalize to 0-255 range and convert to uint8
             image_rgb = (image_np * 255).clip(0, 255).astype(np.uint8)
+
+            # Create PIL Image
             pil_image = Image.fromarray(image_rgb)
 
             # Resize the image
