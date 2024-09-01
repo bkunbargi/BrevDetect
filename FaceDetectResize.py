@@ -87,7 +87,7 @@ class BrevResizeNode:
                 "image": ("IMAGE",),
                 "target_width": ("INT", {"default": 512, "min": 1, "max": 8192, "step": 1}),
                 "target_height": ("INT", {"default": 512, "min": 1, "max": 8192, "step": 1}),
-                "maintain_aspect_ratio": ("BOOL", {"default": True}),
+                "maintain_aspect_ratio": (["True", "False"], {"default": "True"})
             },
         }
 
