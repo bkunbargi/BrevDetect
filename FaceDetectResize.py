@@ -95,37 +95,30 @@ class BrevResize:
     CATEGORY = "BrevResize"
 
     def resize_image(self, image, width, height):
+        print("Input image shape: ", image.shape)
         try:
-            # Convert from ComfyUI image format to numpy array
             if isinstance(image, torch.Tensor):
-                image_np = image.squeeze().cpu().numpy()
+                image_np = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
             else:
                 image_np = np.array(image)
 
-            # Ensure the image is in the correct shape (H, W, C)
-            if image_np.ndim == 2:
-                image_np = image_np[:, :, np.newaxis]
-            elif image_np.ndim == 3 and image_np.shape[0] == 1:
-                image_np = image_np.squeeze(0)
-            elif image_np.ndim == 3 and image_np.shape[0] == 3:
+            print("Image Shape: ", image_np.shape)
+            if image_np.shape[2] != 3:
                 image_np = np.transpose(image_np, (1, 2, 0))
 
-            # Convert to RGB if it's a single-channel image
-            if image_np.shape[2] == 1:
-                image_np = np.repeat(image_np, 3, axis=2)
-
-            # Normalize to 0-255 range and convert to uint8
             image_rgb = (image_np * 255).clip(0, 255).astype(np.uint8)
+            print(f"Converted image shape: {image_rgb.shape}, dtype: {image_rgb.dtype}")
 
-            # Create PIL Image
             pil_image = Image.fromarray(image_rgb)
+            print(f"Original PIL image size: {pil_image.size}")
 
-            # Resize the image
             resized_image = pil_image.resize((width, height), Image.LANCZOS)
+            print(f"Image resized to: {resized_image.size}")
 
             # Convert back to ComfyUI image format
             output_image = np.array(resized_image).astype(np.float32) / 255.0
             output_image = torch.from_numpy(output_image).permute(2, 0, 1).unsqueeze(0)
+            print(f"Output image shape: {output_image.shape}, type: {output_image.dtype}")
 
             return (output_image,)
         except Exception as e:
