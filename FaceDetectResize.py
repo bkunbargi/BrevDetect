@@ -79,10 +79,64 @@ class FaceDetectResizeNode:
             traceback.print_exc()
             return (image,)
 
+class BrevResizeNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "target_width": ("INT", {"default": 512, "min": 1, "max": 8192, "step": 1}),
+                "target_height": ("INT", {"default": 512, "min": 1, "max": 8192, "step": 1}),
+                "maintain_aspect_ratio": ("BOOL", {"default": True}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "resize_image"
+    CATEGORY = "BrevResize"
+
+    def resize_image(self, image, target_width, target_height, maintain_aspect_ratio=True):
+        try:
+            # Convert torch tensor to NumPy array for PIL compatibility
+            if isinstance(image, torch.Tensor):
+                image_np = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
+            else:
+                image_np = np.array(image)
+
+            # Convert image to RGB format if not already
+            image_rgb = (image_np * 255).clip(0, 255).astype(np.uint8)
+
+            # Convert to PIL image
+            pil_image = Image.fromarray(image_rgb)
+
+            if maintain_aspect_ratio:
+                # Maintain aspect ratio
+                pil_image.thumbnail((target_width, target_height), Image.LANCZOS)
+                new_width, new_height = pil_image.size
+            else:
+                # Resize without maintaining aspect ratio
+                new_width, new_height = target_width, target_height
+                pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
+
+            print(f"Image resized to: {new_width}x{new_height}")
+
+            # Convert back to NumPy array and normalize to [0, 1] for ComfyUI
+            output_image = np.array(pil_image).astype(np.float32) / 255.0
+            output_image = torch.from_numpy(output_image).permute(2, 0, 1).unsqueeze(0)
+
+            return (output_image,)
+        except Exception as e:
+            print(f"Error in BrevResizeNode: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return (image,)
+
 NODE_CLASS_MAPPINGS = {
-    "FaceDetectResizeNode": FaceDetectResizeNode
+    "FaceDetectResizeNode": FaceDetectResizeNode,
+    "BrevResizeNode": BrevResizeNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "FaceDetectResizeNode": "Face Detect and Resize"
+    "FaceDetectResizeNode": "Face Detect and Resize",
+    "BrevResizeNode": "Brev Resize",
 }
