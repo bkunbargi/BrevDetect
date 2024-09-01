@@ -102,51 +102,32 @@ class BrevResizeNode:
             print(f"Target dimensions: {target_width}x{target_height}")
             print(f"Maintain aspect ratio: {maintain_aspect_ratio}")
 
-            # Ensure the input tensor is in the correct format (B, C, H, W)
             if isinstance(image, torch.Tensor):
-                if image.shape[1] == 3:  # If it's already in (B, C, H, W) format
-                    image_np = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
-                else:  # If it's in (B, H, W, C) format
-                    image_np = image.squeeze(0).cpu().numpy()
-                print(f"Converted to NumPy array. Shape: {image_np.shape}")
+                image_np = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
             else:
                 image_np = np.array(image)
-                print(f"Already NumPy array. Shape: {image_np.shape}")
 
-            # Ensure the image is in the correct format for PIL (H, W, C)
-            if image_np.shape[2] != 3:
-                image_np = np.transpose(image_np, (1, 2, 0))
-            
-            # Convert image to RGB format if not already
+            print(f"Converted to NumPy array. Shape: {image_np.shape}")
+
             image_rgb = (image_np * 255).clip(0, 255).astype(np.uint8)
             print(f"Converted to RGB. Shape: {image_rgb.shape}")
 
-            # Convert to PIL image
             pil_image = Image.fromarray(image_rgb)
             print(f"Converted to PIL Image. Size: {pil_image.size}")
 
             if maintain_aspect_ratio == "True":
-                # Maintain aspect ratio
                 pil_image.thumbnail((target_width, target_height), Image.LANCZOS)
-                new_width, new_height = pil_image.size
-                print(f"Resized with aspect ratio. New size: {new_width}x{new_height}")
             else:
-                # Resize without maintaining aspect ratio
-                new_width, new_height = target_width, target_height
-                pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
-                print(f"Resized without aspect ratio. New size: {new_width}x{new_height}")
+                pil_image = pil_image.resize((target_width, target_height), Image.LANCZOS)
 
             print(f"Final image size: {pil_image.size}")
 
-            # Convert back to NumPy array and normalize to [0, 1] for ComfyUI
+            # Convert back to ComfyUI image format
             output_image = np.array(pil_image).astype(np.float32) / 255.0
-            
-            # Convert to PyTorch tensor and ensure it's in (B, C, H, W) format
-            output_tensor = torch.from_numpy(output_image).permute(2, 0, 1).unsqueeze(0)
-            
-            print(f"Output image shape: {output_tensor.shape}")
+            output_image = torch.from_numpy(output_image).permute(2, 0, 1).unsqueeze(0)
+            print(f"Output image shape: {output_image.shape}, type: {output_image.dtype}")
 
-            return (output_tensor,)
+            return (output_image,)
         except Exception as e:
             print(f"Error in BrevResizeNode: {str(e)}")
             import traceback
