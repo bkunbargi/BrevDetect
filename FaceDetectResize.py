@@ -87,7 +87,7 @@ class BrevResizeNode:
                 "image": ("IMAGE",),
                 "target_width": ("INT", {"default": 512, "min": 1, "max": 8192, "step": 1}),
                 "target_height": ("INT", {"default": 512, "min": 1, "max": 8192, "step": 1}),
-                "maintain_aspect_ratio": ("BOOL", {"default": True}),
+                "maintain_aspect_ratio": (["True", "False"], {"default": "True"})
             },
         }
 
@@ -98,7 +98,7 @@ class BrevResizeNode:
     def resize_image(self, image, target_width, target_height, maintain_aspect_ratio=True):
         try:
             print(f"Input image type: {type(image)}")
-            print(f"Input image shape: {image.shape}")
+            print(f"Input image shape: {image.shape if hasattr(image, 'shape') else 'Not available'}")
             print(f"Target dimensions: {target_width}x{target_height}")
             print(f"Maintain aspect ratio: {maintain_aspect_ratio}")
 
@@ -112,46 +112,36 @@ class BrevResizeNode:
 
             # Convert image to RGB format if not already
             image_rgb = (image_np * 255).clip(0, 255).astype(np.uint8)
-            print(f"Converted to RGB. Shape: {image_rgb.shape}, dtype: {image_rgb.dtype}")
+            print(f"Converted to RGB. Shape: {image_rgb.shape}")
 
             # Convert to PIL image
             pil_image = Image.fromarray(image_rgb)
-            print(f"Converted to PIL Image. Size: {pil_image.size}, Mode: {pil_image.mode}")
+            print(f"Converted to PIL Image. Size: {pil_image.size}")
 
-            # Resize the image
             if maintain_aspect_ratio:
-                print("Maintaining aspect ratio...")
+                # Maintain aspect ratio
                 pil_image.thumbnail((target_width, target_height), Image.LANCZOS)
-                print(f"After thumbnail: {pil_image.size}")
-                # If the image is smaller than the target size, pad it
-                if pil_image.size != (target_width, target_height):
-                    print("Padding image to target size")
-                    new_img = Image.new("RGB", (target_width, target_height))
-                    new_img.paste(pil_image, ((target_width - pil_image.width) // 2,
-                                              (target_height - pil_image.height) // 2))
-                    pil_image = new_img
+                new_width, new_height = pil_image.size
+                print(f"Resized with aspect ratio. New size: {new_width}x{new_height}")
             else:
-                print("Resizing without maintaining aspect ratio")
-                pil_image = pil_image.resize((target_width, target_height), Image.LANCZOS)
+                # Resize without maintaining aspect ratio
+                new_width, new_height = target_width, target_height
+                pil_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
+                print(f"Resized without aspect ratio. New size: {new_width}x{new_height}")
 
-            new_width, new_height = pil_image.size
-            print(f"Final image size: {new_width}x{new_height}")
+            print(f"Final image size: {pil_image.size}")
 
             # Convert back to NumPy array and normalize to [0, 1] for ComfyUI
             output_image = np.array(pil_image).astype(np.float32) / 255.0
-            print(f"Converted back to NumPy. Shape: {output_image.shape}, dtype: {output_image.dtype}")
-
             output_image = torch.from_numpy(output_image).permute(2, 0, 1).unsqueeze(0)
-            print(f"Final output tensor shape: {output_image.shape}")
+            print(f"Output image shape: {output_image.shape}")
 
             return (output_image,)
-
         except Exception as e:
             print(f"Error in BrevResizeNode: {str(e)}")
             import traceback
             traceback.print_exc()
-            raise  # Re-raise the exception instead of returning the original image
-
+            return (image,)
 
 NODE_CLASS_MAPPINGS = {
     "FaceDetectResizeNode": FaceDetectResizeNode,
