@@ -98,13 +98,13 @@ class BrevResize:
         print("Input image shape: ", image.shape)
         try:
             if isinstance(image, torch.Tensor):
-                image_np = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
+                image_np = image.squeeze(0).permute(0,1,2).cpu().numpy()
             else:
                 image_np = np.array(image)
 
             print("Image Shape: ", image_np.shape)
             if image_np.shape[2] != 3:
-                image_np = np.transpose(image_np, (1, 2, 0))
+                image_np = np.transpose(image_np, (1,2,0))
 
             image_rgb = (image_np * 255).clip(0, 255).astype(np.uint8)
             print(f"Converted image shape: {image_rgb.shape}, dtype: {image_rgb.dtype}")
