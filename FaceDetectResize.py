@@ -103,11 +103,18 @@ class BrevResizeNode:
             print(f"Maintain aspect ratio: {maintain_aspect_ratio}")
 
             if isinstance(image, torch.Tensor):
-                image_np = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
+                # Ensure the tensor is in the format [B, H, W, C]
+                if image.shape[1] == 3:  # If it's in [B, C, H, W] format
+                    image = image.permute(0, 2, 3, 1)
+                image_np = image.squeeze(0).cpu().numpy()
             else:
                 image_np = np.array(image)
 
             print(f"Converted to NumPy array. Shape: {image_np.shape}")
+
+            # Ensure the image is in [H, W, C] format
+            if image_np.shape[2] != 3:
+                image_np = np.transpose(image_np, (1, 2, 0))
 
             image_rgb = (image_np * 255).clip(0, 255).astype(np.uint8)
             print(f"Converted to RGB. Shape: {image_rgb.shape}")
