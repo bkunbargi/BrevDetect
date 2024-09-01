@@ -117,7 +117,7 @@ class BrevResize:
 
             # Convert back to ComfyUI image format
             output_image = np.array(resized_image).astype(np.float32) / 255.0
-            output_image = torch.from_numpy(output_image).permute(2, 0, 1).unsqueeze(0)
+            output_image = torch.from_numpy(output_image).unsqueeze(0)
             print(f"Output image shape: {output_image.shape}, type: {output_image.dtype}")
 
             return (output_image,)
