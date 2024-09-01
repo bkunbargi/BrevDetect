@@ -102,14 +102,21 @@ class BrevResizeNode:
             print(f"Target dimensions: {target_width}x{target_height}")
             print(f"Maintain aspect ratio: {maintain_aspect_ratio}")
 
-            # Convert torch tensor to NumPy array for PIL compatibility
+            # Ensure the input tensor is in the correct format (B, C, H, W)
             if isinstance(image, torch.Tensor):
-                image_np = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
+                if image.shape[1] == 3:  # If it's already in (B, C, H, W) format
+                    image_np = image.squeeze(0).permute(1, 2, 0).cpu().numpy()
+                else:  # If it's in (B, H, W, C) format
+                    image_np = image.squeeze(0).cpu().numpy()
                 print(f"Converted to NumPy array. Shape: {image_np.shape}")
             else:
                 image_np = np.array(image)
                 print(f"Already NumPy array. Shape: {image_np.shape}")
 
+            # Ensure the image is in the correct format for PIL (H, W, C)
+            if image_np.shape[2] != 3:
+                image_np = np.transpose(image_np, (1, 2, 0))
+            
             # Convert image to RGB format if not already
             image_rgb = (image_np * 255).clip(0, 255).astype(np.uint8)
             print(f"Converted to RGB. Shape: {image_rgb.shape}")
@@ -118,7 +125,7 @@ class BrevResizeNode:
             pil_image = Image.fromarray(image_rgb)
             print(f"Converted to PIL Image. Size: {pil_image.size}")
 
-            if maintain_aspect_ratio:
+            if maintain_aspect_ratio == "True":
                 # Maintain aspect ratio
                 pil_image.thumbnail((target_width, target_height), Image.LANCZOS)
                 new_width, new_height = pil_image.size
