@@ -95,7 +95,7 @@ class BrevResizeNode:
     FUNCTION = "resize_image"
     CATEGORY = "BrevResize"
 
-    def resize_image(self, image, target_width, target_height, maintain_aspect_ratio=True):
+    def resize_image(self, image, target_width, target_height, maintain_aspect_ratio="True"):
         try:
             print(f"Input image type: {type(image)}")
             print(f"Input image shape: {image.shape if hasattr(image, 'shape') else 'Not available'}")
@@ -140,7 +140,11 @@ class BrevResizeNode:
 
             # Convert back to NumPy array and normalize to [0, 1] for ComfyUI
             output_image = np.array(pil_image).astype(np.float32) / 255.0
-            output_image = torch.from_numpy(output_image).permute(2, 0, 1).unsqueeze(0)
+            
+            # Ensure the output is in (B, C, H, W) format
+            output_image = np.transpose(output_image, (2, 0, 1))
+            output_image = np.expand_dims(output_image, axis=0)
+            
             print(f"Output image shape: {output_image.shape}")
 
             return (output_image,)
