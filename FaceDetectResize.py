@@ -141,13 +141,12 @@ class BrevResizeNode:
             # Convert back to NumPy array and normalize to [0, 1] for ComfyUI
             output_image = np.array(pil_image).astype(np.float32) / 255.0
             
-            # Ensure the output is in (B, C, H, W) format
-            output_image = np.transpose(output_image, (2, 0, 1))
-            output_image = np.expand_dims(output_image, axis=0)
+            # Convert to PyTorch tensor and ensure it's in (B, C, H, W) format
+            output_tensor = torch.from_numpy(output_image).permute(2, 0, 1).unsqueeze(0)
             
-            print(f"Output image shape: {output_image.shape}")
+            print(f"Output image shape: {output_tensor.shape}")
 
-            return (output_image,)
+            return (output_tensor,)
         except Exception as e:
             print(f"Error in BrevResizeNode: {str(e)}")
             import traceback
