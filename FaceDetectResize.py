@@ -1,8 +1,47 @@
 import numpy as np
 import torch
-import cv2
 from PIL import Image
-from facenet_pytorch import MTCNN
+
+from insightface.app import FaceAnalysis
+
+
+def _to_rgb_uint8(image):
+    """
+    Convert ComfyUI IMAGE -> uint8 RGB HxWx3
+    ComfyUI usually: torch float32 [B,H,W,C] in 0..1
+    """
+    if isinstance(image, torch.Tensor):
+        img = image
+        if img.dim() == 4:
+            img = img[0]  # first in batch
+        img = img.detach().cpu().numpy()
+    else:
+        img = np.array(image)
+
+    # Ensure HWC
+    if img.ndim != 3:
+        raise ValueError(f"Expected 3D image, got shape {img.shape}")
+
+    # Some codebases accidentally produce CHW; handle that safely
+    if img.shape[-1] != 3 and img.shape[0] == 3:
+        img = np.transpose(img, (1, 2, 0))
+
+    if img.shape[-1] != 3:
+        raise ValueError(f"Expected 3 channels, got shape {img.shape}")
+
+    # If float image in 0..1, convert to 0..255 uint8
+    if img.dtype != np.uint8:
+        img = (img * 255.0).clip(0, 255).astype(np.uint8)
+
+    return img
+
+
+def _to_comfy_image(rgb_uint8):
+    """
+    uint8 RGB HxWx3 -> ComfyUI IMAGE torch float [1,H,W,C] in 0..1
+    """
+    out = rgb_uint8.astype(np.float32) / 255.0
+    return torch.from_numpy(out).unsqueeze(0)
 
 
 class FaceDetectResizeNode:
@@ -14,26 +53,46 @@ class FaceDetectResizeNode:
     FUNCTION = "process_image"
     CATEGORY = "BrevDetect"
 
-    def detect_faces(self, image_rgb):
-        """Detect faces in the RGB image using Torch MTCNN and keep only the largest face."""
-        print(f"Input image shape: {image_rgb.shape}, dtype: {image_rgb.dtype}")
+    # Cache InsightFace app across calls
+    _app = None
+    _app_cfg = None
 
-        # facenet-pytorch expects PIL or torch tensor; easiest is PIL
-        pil_image = Image.fromarray(image_rgb)
+    @classmethod
+    def _get_app(cls):
+        """
+        Create FaceAnalysis once and reuse. This avoids repeated model init.
+        """
+        # If you want to tune detection size, do it here.
+        det_size = (640, 640)
 
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Pick GPU if available, else CPU
+        ctx_id = 0 if torch.cuda.is_available() else -1
 
-        # Keep minimal: create detector here like you did before
-        detector = MTCNN(keep_all=True, device=device)
+        cfg = (ctx_id, det_size)
+        if cls._app is None or cls._app_cfg != cfg:
+            app = FaceAnalysis(name="buffalo_l")
+            app.prepare(ctx_id=ctx_id, det_size=det_size)
+            cls._app = app
+            cls._app_cfg = cfg
 
-        # boxes: Nx4 [x1, y1, x2, y2] or None
-        boxes, probs = detector.detect(pil_image)
+        return cls._app
 
-        if boxes is None or len(boxes) == 0:
-            print("No faces detected.")
+    def detect_largest_face_box(self, image_rgb_uint8):
+        """
+        image_rgb_uint8: HxWx3 RGB uint8
+        Return: {"box": [x, y, w, h]} or None
+        """
+        app = self._get_app()
+
+        # InsightFace expects BGR
+        image_bgr = image_rgb_uint8[:, :, ::-1].copy()
+
+        faces = app.get(image_bgr)
+        if not faces:
             return None
 
-        # pick largest by area
+        # faces[i].bbox = [x1,y1,x2,y2]
+        boxes = np.array([f.bbox for f in faces], dtype=np.float32)
         areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
         i = int(np.argmax(areas))
 
@@ -43,57 +102,43 @@ class FaceDetectResizeNode:
         w = int(max(0, np.ceil(x2 - x1)))
         h = int(max(0, np.ceil(y2 - y1)))
 
-        largest_face = {"box": [x, y, w, h]}
-        print(f"Largest face detected at: {largest_face['box']}")
-        return [largest_face]
+        return {"box": [x, y, w, h]}
 
     def process_image(self, image):
-        print("Input image shape: ", image.shape)
         try:
-            if isinstance(image, torch.Tensor):
-                image_np = image.squeeze(0).permute(0, 1, 2).cpu().numpy()
-            else:
-                image_np = np.array(image)
+            image_rgb = _to_rgb_uint8(image)
 
-            print("Image Shape: ", image_np.shape)
-            if image_np.shape[2] != 3:
-                image_np = np.transpose(image_np, (1, 2, 0))
+            face = self.detect_largest_face_box(image_rgb)
 
-            image_rgb = (image_np * 255).clip(0, 255).astype(np.uint8)
-            print(f"Converted image shape: {image_rgb.shape}, dtype: {image_rgb.dtype}")
-
-            faces = self.detect_faces(image_rgb)
             min_face_size = 128
             max_face_size = 640
+
             pil_image = Image.fromarray(image_rgb)
-            print(f"Original PIL image size: {pil_image.size}")
 
-            if faces:
-                largest_face_dimensions = max((face["box"][2], face["box"][3]) for face in faces)
-                print(f"Largest face dimensions: {largest_face_dimensions}")
-                if max(largest_face_dimensions) > max_face_size:
-                    scale_factor = max_face_size / max(largest_face_dimensions)
-                elif max(largest_face_dimensions) < min_face_size:
-                    scale_factor = min_face_size / max(largest_face_dimensions)
+            if face is not None:
+                _, _, w, h = face["box"]
+                largest_dim = max(w, h)
+
+                if largest_dim <= 0:
+                    scale_factor = 1.0
+                elif largest_dim > max_face_size:
+                    scale_factor = max_face_size / largest_dim
+                elif largest_dim < min_face_size:
+                    scale_factor = min_face_size / largest_dim
                 else:
-                    scale_factor = 1
+                    scale_factor = 1.0
 
-                new_width = int(pil_image.width * scale_factor)
-                new_height = int(pil_image.height * scale_factor)
-                scaled_image = pil_image.resize((new_width, new_height), Image.LANCZOS)
-                print(f"Image resized to: {scaled_image.size}")
-            else:
-                scaled_image = pil_image
-                print("No resizing needed. Image remains at original size.")
+                new_w = max(1, int(round(pil_image.width * scale_factor)))
+                new_h = max(1, int(round(pil_image.height * scale_factor)))
 
-            # Convert back to ComfyUI image format
-            output_image = np.array(scaled_image).astype(np.float32) / 255.0
-            output_image = torch.from_numpy(output_image).unsqueeze(0)
-            print(f"Output image shape: {output_image.shape}, type: {output_image.dtype}")
+                if (new_w, new_h) != pil_image.size:
+                    pil_image = pil_image.resize((new_w, new_h), Image.LANCZOS)
 
-            return (output_image,)
+            out_rgb = np.array(pil_image, dtype=np.uint8)
+            return (_to_comfy_image(out_rgb),)
+
         except Exception as e:
-            print(f"Error in process_image: {str(e)}")
+            print(f"[BrevDetect] Error: {e}")
             import traceback
             traceback.print_exc()
             return (image,)
@@ -107,7 +152,7 @@ class BrevResize:
                 "image": ("IMAGE",),
                 "width": ("INT", {"default": 512, "min": 64, "max": 2048, "step": 8}),
                 "height": ("INT", {"default": 512, "min": 64, "max": 2048, "step": 8}),
-            },
+            }
         }
 
     RETURN_TYPES = ("IMAGE",)
@@ -115,34 +160,14 @@ class BrevResize:
     CATEGORY = "BrevResize"
 
     def resize_image(self, image, width, height):
-        print("Input image shape: ", image.shape)
         try:
-            if isinstance(image, torch.Tensor):
-                image_np = image.squeeze(0).permute(0, 1, 2).cpu().numpy()
-            else:
-                image_np = np.array(image)
-
-            print("Image Shape: ", image_np.shape)
-            if image_np.shape[2] != 3:
-                image_np = np.transpose(image_np, (1, 2, 0))
-
-            image_rgb = (image_np * 255).clip(0, 255).astype(np.uint8)
-            print(f"Converted image shape: {image_rgb.shape}, dtype: {image_rgb.dtype}")
-
-            pil_image = Image.fromarray(image_rgb)
-            print(f"Original PIL image size: {pil_image.size}")
-
-            resized_image = pil_image.resize((width, height), Image.LANCZOS)
-            print(f"Image resized to: {resized_image.size}")
-
-            # Convert back to ComfyUI image format
-            output_image = np.array(resized_image).astype(np.float32) / 255.0
-            output_image = torch.from_numpy(output_image).unsqueeze(0)
-            print(f"Output image shape: {output_image.shape}, type: {output_image.dtype}")
-
-            return (output_image,)
+            image_rgb = _to_rgb_uint8(image)
+            pil = Image.fromarray(image_rgb)
+            pil = pil.resize((int(width), int(height)), Image.LANCZOS)
+            out_rgb = np.array(pil, dtype=np.uint8)
+            return (_to_comfy_image(out_rgb),)
         except Exception as e:
-            print(f"Error in resize_image: {str(e)}")
+            print(f"[BrevResize] Error: {e}")
             import traceback
             traceback.print_exc()
             return (image,)
